@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AuraSynth Engine</title>
+    <style>
+        body, html { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: sans-serif; }
+        canvas { display: block; }
+        #instructions {
+            position: absolute; top: 20px; left: 20px; color: rgba(255,255,255,0.4);
+            letter-spacing: 2px; font-size: 10px; pointer-events: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="instructions">MOVE MOUSE TO PLAY SYMPHONY • TYPE TO ADD RHYTHM • CLICK TO RESET</div>
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let width, height;
+        let audioCtx, masterGain, analyser;
+        
+        // --- AUDIO ENGINE ---
+        function initAudio() {
+            if (audioCtx) return;
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            masterGain = audioCtx.createGain();
+            masterGain.gain.value = 0.15;
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            masterGain.connect(analyser);
+            analyser.connect(audioCtx.destination);
+        }
+
+        function playNote(freq, type = 'sine', duration = 1.5) {
+            if (!audioCtx) initAudio();
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = type;
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            osc.connect(g);
+            g.connect(masterGain);
+            osc.start();
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // --- VISUALS ---
+        let particles = [];
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.size = Math.random() * 5 + 1;
+                this.speedX = Math.random() * 3 - 1.5;
+                this.speedY = Math.random() * 3 - 1.5;
+                this.color = color;
+                this.life = 1;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= 0.01;
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        function resize() {
+            width = canvas.width = window.innerWidth;
+            height = canvas.height = window.innerHeight;
+        }
+
+        function animate() {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
+            ctx.fillRect(0, 0, width, height);
+
+            // Visual feedback from Audio
+            if (analyser) {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                
+                ctx.strokeStyle = `hsla(${200 + avg}, 70%, 50%, 0.2)`;
+                ctx.lineWidth = avg / 5;
+                ctx.beginPath();
+                ctx.arc(width/2, height/2, avg * 2, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            particles.forEach((p, i) => {
+                p.update();
+                p.draw();
+                if (p.life <= 0) particles.splice(i, 1);
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        // --- INTERACTION ---
+        window.addEventListener('mousemove', (e) => {
+            if (Math.random() > 0.95) { // Throttled synth
+                const freq = (e.clientX / width) * 440 + 220;
+                playNote(freq, 'triangle', 2);
+                particles.push(new Particle(e.clientX, e.clientY, '#4facfe'));
+            }
+        });
+
+        window.addEventListener('keydown', (e) => {
+            const keys = {'a':261, 's':293, 'd':329, 'f':349, 'g':392, 'h':440, 'j':493, 'k':523};
+            if (keys[e.key]) {
+                playNote(keys[e.key] / 2, 'square', 0.5); // Percussive bass
+                for(let i=0; i<10; i++) particles.push(new Particle(width/2, height/2, '#f093fb'));
+            }
+        });
+
+        window.addEventListener('click', () => {
+            if (audioCtx) audioCtx.resume();
+            else initAudio();
+        });
+
+        window.addEventListener('resize', resize);
+        resize();
+        animate();
+    </script>
+</body>
+</html>
