@@ -1,96 +1,70 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AuraSynth Pro | Interactive Flow</title>
+    <title>VoidJam // Active</title>
     <style>
-        body, html { margin: 0; padding: 0; background: #050505; overflow: hidden; font-family: 'Courier New', monospace; }
-        canvas { display: block; cursor: crosshair; }
-        #ui {
-            position: absolute; bottom: 30px; left: 30px; color: #00f2ff;
-            letter-spacing: 2px; font-size: 12px; pointer-events: none;
-            text-transform: uppercase; text-shadow: 0 0 10px #00f2ff;
+        body, html { margin: 0; padding: 0; background: #000; overflow: hidden; }
+        canvas { display: block; }
+        #overlay {
+            position: absolute; top: 20px; left: 20px;
+            color: white; font-family: monospace; pointer-events: none;
+            text-transform: uppercase; letter-spacing: 4px; opacity: 0.5;
         }
-        .hint { color: rgba(255,255,255,0.3); font-size: 10px; margin-top: 5px; }
     </style>
 </head>
 <body>
-    <div id="ui">
-        <div>AuraSynth // Signal Active</div>
-        <div class="hint">Cross the lines to pluck • Click to drop a gravity pulse</div>
-    </div>
+    <div id="overlay">System: Jamming // Scale: Phrygian Dominant</div>
     <canvas id="canvas"></canvas>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        let width, height;
-        let audioCtx, masterGain, delayNode;
-
-        // 1. THE MUSICAL SCALE (C-Major Pentatonic) - This makes it impossible to play a "bad" note
-        const SCALE = [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00, 523.25];
+        let width, height, audioCtx, masterGain, reverb;
+        
+        // --- PRO SCALE: G-Minor Phrygian (Dark, Epic, Hard to sound bad) ---
+        const SCALE = [98.00, 103.83, 123.47, 130.81, 146.83, 155.56, 185.00, 196.00, 207.65, 246.94];
+        
+        let mouse = { x: 0, y: 0, active: false };
+        let trail = [];
 
         function initAudio() {
             if (audioCtx) return;
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = 0.2;
-
-            // Add a Echo (Delay) effect for that "Space" sound
-            delayNode = audioCtx.createDelay();
-            delayNode.delayTime.value = 0.4;
-            const feedback = audioCtx.createGain();
-            feedback.gain.value = 0.4;
-
-            delayNode.connect(feedback);
-            feedback.connect(delayNode);
+            masterGain.gain.value = 0.3;
             
-            masterGain.connect(audioCtx.destination);
-            masterGain.connect(delayNode);
-            delayNode.connect(audioCtx.destination);
+            // Compression to make it "Crunchy"
+            const compressor = audioCtx.createDynamicsCompressor();
+            compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
+            compressor.knee.setValueAtTime(40, audioCtx.currentTime);
+            
+            masterGain.connect(compressor);
+            compressor.connect(audioCtx.destination);
         }
 
-        function playNote(freq, volume = 0.1, duration = 1) {
+        function playSynth(freq, x) {
             if (!audioCtx) initAudio();
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             
-            osc.type = 'sine';
+            // Mix of Sawtooth and Sine for "Full" sound
+            osc.type = (x % 2 === 0) ? 'sawtooth' : 'triangle';
             osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
             
-            g.gain.setValueAtTime(volume, audioCtx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            g.gain.setValueAtTime(0.15, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.2);
             
-            osc.connect(g);
+            // Bandpass filter to make it "Sweep"
+            const filter = audioCtx.createBiquadFilter();
+            filter.type = "bandpass";
+            filter.frequency.value = Math.random() * 2000 + 500;
+
+            osc.connect(filter);
+            filter.connect(g);
             g.connect(masterGain);
+            
             osc.start();
-            osc.stop(audioCtx.currentTime + duration);
-        }
-
-        // --- VISUALS ---
-        let particles = [];
-        let pulses = [];
-        let lastX = 0;
-
-        class Pulse {
-            constructor(x, y, freq) {
-                this.x = x; this.y = y; this.freq = freq;
-                this.r = 0; this.maxR = 150;
-                this.timer = 0;
-            }
-            update() {
-                this.r += 2;
-                if (this.r > this.maxR) {
-                    this.r = 0;
-                    playNote(this.freq, 0.05, 0.5); // Loop the sound
-                }
-            }
-            draw() {
-                ctx.strokeStyle = `rgba(0, 242, 255, ${1 - this.r/this.maxR})`;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r, 0, Math.PI*2);
-                ctx.stroke();
-            }
+            osc.stop(audioCtx.currentTime + 1.5);
         }
 
         function resize() {
@@ -99,53 +73,53 @@
         }
 
         function animate() {
-            ctx.fillStyle = 'rgba(5, 5, 5, 0.2)'; // Motion blur
+            // Dark trails
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
             ctx.fillRect(0, 0, width, height);
 
-            // Draw "Laser Strings"
-            const step = width / (SCALE.length);
-            for(let i=1; i < SCALE.length; i++) {
-                let x = i * step;
-                ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
-                ctx.beginPath();
-                ctx.moveTo(x, 0); ctx.lineTo(x, height);
-                ctx.stroke();
+            // Update & Draw Ribbon Trail
+            if (mouse.active) {
+                trail.push({x: mouse.x, y: mouse.y, age: 0});
             }
+            if (trail.length > 50) trail.shift();
 
-            pulses.forEach(p => { p.update(); p.draw(); });
+            ctx.beginPath();
+            for(let i = 0; i < trail.length; i++) {
+                let p = trail[i];
+                p.age++;
+                let hue = (i * 5) + 200;
+                ctx.strokeStyle = `hsla(${hue}, 100%, 60%, ${i/trail.length})`;
+                ctx.lineWidth = i * 0.8;
+                ctx.lineTo(p.x, p.y);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+            }
 
             requestAnimationFrame(animate);
         }
 
-        // --- INTERACTION ---
         window.addEventListener('mousemove', (e) => {
-            const step = width / SCALE.length;
-            const currentStrip = Math.floor(e.clientX / step);
-            const lastStrip = Math.floor(lastX / step);
+            mouse.x = e.clientX;
+            mouse.y = e.clientY;
+            mouse.active = true;
 
-            // Only play if we cross a "String"
-            if (currentStrip !== lastStrip) {
-                const freq = SCALE[currentStrip % SCALE.length];
-                playNote(freq, 0.15, 1.5);
-                
-                // Visual spark
-                for(let i=0; i<5; i++) {
-                    // (Particle logic would go here, simplified for now)
-                }
+            // Jam Logic: Play note when crossing hidden vertical sections
+            const section = Math.floor((e.clientX / width) * SCALE.length);
+            if (section !== mouse.lastSection) {
+                const f = SCALE[section % SCALE.length];
+                playSynth(f, section);
+                mouse.lastSection = section;
             }
-            lastX = e.clientX;
         });
 
-        window.addEventListener('mousedown', (e) => {
-            initAudio();
-            if (audioCtx.state === 'suspended') audioCtx.resume();
+        window.addEventListener('mousedown', () => {
+            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+            else initAudio();
             
-            const step = width / SCALE.length;
-            const freq = SCALE[Math.floor(e.clientX / step) % SCALE.length];
-            
-            // Add a repeating pulse
-            if (pulses.length > 5) pulses.shift(); // Limit pulses
-            pulses.push(new Pulse(e.clientX, e.clientY, freq));
+            // Click = Power Chord (Base note)
+            playSynth(SCALE[0] / 2, 0); 
+            playSynth(SCALE[2] / 2, 1);
         });
 
         window.addEventListener('resize', resize);
