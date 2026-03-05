@@ -1,101 +1,164 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>AuraSynth | Play</title>
+    <title>Void Band | Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        body, html { margin: 0; padding: 0; background: #000; overflow: hidden; }
-        canvas { display: block; cursor: none; }
-        #hint {
-            position: absolute; bottom: 20px; left: 20px;
-            color: rgba(99, 102, 241, 0.5); font-family: monospace;
-            letter-spacing: 3px; font-size: 10px; pointer-events: none;
-        }
+        body { background: #050505; color: #fff; overflow: hidden; font-family: monospace; }
+        .active-ring { border: 2px solid #6366f1; box-shadow: 0 0 20px #6366f1; }
+        canvas { position: absolute; top: 0; left: 0; z-index: -1; }
+        .btn-band { width: 100px; height: 100px; border-radius: 50%; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.3s; background: rgba(255,255,255,0.05); }
     </style>
 </head>
-<body>
-    <div id="hint">MOUSE: STRUM THE VOID • CLICK: PULSE WAVE</div>
-    <canvas id="canvas"></canvas>
+<body class="h-screen flex items-center justify-center">
+    <canvas id="stage"></canvas>
+    
+    <div class="z-10 grid grid-cols-4 gap-12 text-center">
+        <!-- THE BAND -->
+        <div class="space-y-4">
+            <div id="stars-btn" onclick="toggle('stars')" class="btn-band border border-yellow-400/30 text-yellow-200">✨ STARS</div>
+            <p class="text-[10px] tracking-widest uppercase">Keyboard</p>
+        </div>
+        
+        <div class="space-y-4">
+            <div id="planets-btn" onclick="toggle('planets')" class="btn-band border border-indigo-400/30 text-indigo-200">🪐 PLANETS</div>
+            <p class="text-[10px] tracking-widest uppercase">Bass</p>
+        </div>
+
+        <div class="space-y-4">
+            <div id="meteors-btn" onclick="toggle('meteors')" class="btn-band border border-red-400/30 text-red-200">☄️ METEORS</div>
+            <p class="text-[10px] tracking-widest uppercase">Drums</p>
+        </div>
+
+        <div class="space-y-4">
+            <div id="vocals-btn" onclick="toggle('vocals')" class="btn-band border border-green-400/30 text-green-200">🎤 VOCAL</div>
+            <select id="voiceSelect" class="bg-black text-[10px] border border-white/10 p-1"></select>
+        </div>
+    </div>
+
+    <div class="absolute top-10 w-full text-center">
+        <h1 id="bpm-display" class="text-4xl font-thin opacity-20">JAMMING // 120 BPM</h1>
+    </div>
 
     <script>
-        const canvas = document.getElementById('canvas');
+        const canvas = document.getElementById('stage');
         const ctx = canvas.getContext('2d');
-        let audioCtx, masterGain;
+        let audioCtx, masterGain, step = 0;
+        let band = { stars: false, planets: false, meteors: false, vocals: false };
         
-        // PENTATONIC SCALE (Safe notes for easy jamming)
-        const SCALE = [130.81, 146.83, 164.81, 196.00, 220.00, 261.63, 293.66, 329.63, 392.00, 440.00];
-        let particles = [];
-
         function initAudio() {
             if (audioCtx) return;
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = 0.1;
+            masterGain.gain.value = 0.5;
             masterGain.connect(audioCtx.destination);
+            
+            // Start the Loop Clock (120 BPM)
+            setInterval(() => {
+                if(audioCtx.state === 'running') playStep();
+            }, 250); // 16th notes approx
         }
 
-        function playNote(freq) {
-            if (!audioCtx) initAudio();
+        function playStep() {
+            step = (step + 1) % 16;
+            
+            // METEORS (Drums) - Kick on 1 and 9, Snare on 5 and 13
+            if (band.meteors) {
+                if (step % 4 === 0) playMeteor(100, 0.5); // Kick
+                if (step === 4 || step === 12) playMeteor(800, 0.2, 'snare'); // Snare
+            }
+
+            // PLANETS (Bass) - Syncopated
+            if (band.planets && (step % 4 === 0 || step === 2 || step === 6)) {
+                playPlanet(65.41); // C2 Bass
+            }
+
+            // STARS (Keyboard) - Randomized melody in scale
+            if (band.stars && step % 2 === 0) {
+                const scale = [261.63, 293.66, 329.63, 392.00, 440.00];
+                playStar(scale[Math.floor(Math.random() * scale.length)]);
+            }
+
+            // VOCALS - Loop every 8 steps
+            if (band.vocals && step === 0) {
+                playVocal();
+            }
+        }
+
+        // --- THE INSTRUMENTS ---
+        function playStar(freq) {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.5);
+            osc.connect(g); g.connect(masterGain);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.5);
+        }
+
+        function playPlanet(freq) {
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
             osc.type = 'sine';
-            osc.frequency.value = freq;
-            g.gain.setValueAtTime(0.15, audioCtx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.5);
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            g.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.8);
             osc.connect(g); g.connect(masterGain);
-            osc.start(); osc.stop(audioCtx.currentTime + 1.5);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.8);
         }
 
-        class Particle {
-            constructor(x, y, freq) {
-                this.x = x; this.y = y;
-                this.freq = freq;
-                this.r = Math.random() * 20 + 5;
-                this.life = 1;
-                this.hue = (freq % 360) + 200;
-            }
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.r * (1-this.life + 1), 0, Math.PI*2);
-                ctx.strokeStyle = `hsla(${this.hue}, 80%, 60%, ${this.life})`;
-                ctx.stroke();
-                this.life -= 0.02;
-            }
+        function playMeteor(freq, vol, type='kick') {
+            const osc = audioCtx.createOscillator();
+            const g = audioCtx.createGain();
+            osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1);
+            g.gain.setValueAtTime(vol, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 0.1);
+            osc.connect(g); g.connect(masterGain);
+            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
         }
 
-        function animate() {
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
+        function playVocal() {
+            const utter = new SpeechSynthesisUtterance("Void. Space. Frequency.");
+            const voices = window.speechSynthesis.getVoices();
+            utter.voice = voices[document.getElementById('voiceSelect').value || 0];
+            utter.pitch = 0.5;
+            utter.rate = 1.5;
+            window.speechSynthesis.speak(utter);
+        }
 
-            particles.forEach((p, i) => {
-                p.draw();
-                if (p.life <= 0) particles.splice(i, 1);
+        // --- GAMEPLAY UI ---
+        function toggle(inst) {
+            initAudio();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+            band[inst] = !band[inst];
+            document.getElementById(`${inst}-btn`).classList.toggle('active-ring');
+        }
+
+        // Load Vocals
+        window.speechSynthesis.onvoiceschanged = () => {
+            const select = document.getElementById('voiceSelect');
+            window.speechSynthesis.getVoices().forEach((v, i) => {
+                const opt = document.createElement('option');
+                opt.value = i; opt.innerText = v.name;
+                select.appendChild(opt);
             });
-            requestAnimationFrame(animate);
-        }
-
-        window.addEventListener('mousemove', (e) => {
-            const section = Math.floor((e.clientX / window.innerWidth) * SCALE.length);
-            if (section !== window.lastSection) {
-                const freq = SCALE[section % SCALE.length];
-                playNote(freq);
-                particles.push(new Particle(e.clientX, e.clientY, freq));
-                window.lastSection = section;
-            }
-        });
-
-        window.addEventListener('mousedown', (e) => {
-            if (audioCtx) audioCtx.resume();
-            playNote(SCALE[0] / 2); // Deep bass pulse
-            for(let i=0; i<15; i++) particles.push(new Particle(e.clientX, e.clientY, 100));
-        });
-
-        window.onresize = () => {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
         };
 
-        window.onresize();
-        animate();
+        // Background Animation
+        function resize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        function draw() {
+            ctx.fillStyle = 'rgba(5, 5, 5, 0.2)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            // Visual feedback
+            if (band.planets) {
+                ctx.strokeStyle = '#6366f1'; ctx.beginPath();
+                ctx.arc(width/2, height/2, (step*20), 0, Math.PI*2); ctx.stroke();
+            }
+            requestAnimationFrame(draw);
+        }
+        window.onresize = resize; resize(); draw();
     </script>
 </body>
 </html>
