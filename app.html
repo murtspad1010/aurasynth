@@ -1,232 +1,82 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>VOID BAND | Astra Jam</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Void Band | Celestial Stage</title>
     <style>
-        body { background: #000; color: #fff; overflow: hidden; font-family: 'Space Grotesk', sans-serif; }
-        .instrument-card { 
-            background: rgba(255,255,255,0.03); 
-            border: 1px solid rgba(255,255,255,0.1);
-            backdrop-filter: blur(10px);
-            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        body, html { margin: 0; padding: 0; background: #020205; overflow: hidden; color: white; font-family: sans-serif; }
+        canvas { display: block; }
+        #controls {
+            position: absolute; bottom: 30px; width: 100%; text-align: center;
+            letter-spacing: 5px; font-size: 10px; opacity: 0.4;
         }
-        .instrument-card.active { border-color: #6366f1; box-shadow: 0 0 30px rgba(99, 102, 241, 0.3); transform: translateY(-5px); }
-        .node { width: 8px; height: 8px; border-radius: 50%; background: #222; transition: all 0.1s; }
-        .node.on { background: #6366f1; box-shadow: 0 0 10px #6366f1; }
-        .scanner { width: 2px; height: 100%; background: rgba(255,255,255,0.2); position: absolute; top: 0; left: 0; pointer-events: none; }
     </style>
 </head>
-<body class="flex flex-col h-screen">
-
-    <!-- THE UNIVERSE (VISUALIZER) -->
-    <canvas id="visualizer" class="absolute inset-0 opacity-40"></canvas>
-
-    <!-- TOP HEADER -->
-    <header class="p-8 flex justify-between items-center z-50">
-        <div>
-            <h2 class="text-2xl font-bold tracking-tighter">ASTRΛ STATION</h2>
-            <p id="bpm-readout" class="text-[10px] text-indigo-400 tracking-[0.5em]">SYNCING WITH COSMOS...</p>
-        </div>
-        <div class="flex gap-4">
-            <input id="vocal-text" type="text" value="WELCOME TO THE VOID" class="bg-transparent border-b border-white/20 px-4 py-2 outline-none text-sm focus:border-indigo-500 transition-all w-64">
-            <select id="vocal-voice" class="bg-black text-[10px] border border-white/10 p-2"></select>
-        </div>
-    </header>
-
-    <!-- MAIN RACK -->
-    <main class="flex-1 flex items-center justify-center p-12 gap-6 z-50">
-        
-        <!-- INSTRUMENT 1: METEOR (DRUMS) -->
-        <div id="meteor-rack" class="instrument-card p-6 rounded-2xl w-64 text-center cursor-pointer" onclick="toggleInst('meteor')">
-            <div class="text-4xl mb-4">☄️</div>
-            <h3 class="font-bold tracking-widest text-xs">METEOR DRUMS</h3>
-            <div class="grid grid-cols-4 gap-2 mt-6 justify-center mx-auto w-fit" id="meteor-seq"></div>
-        </div>
-
-        <!-- INSTRUMENT 2: PLANET (BASS) -->
-        <div id="planet-rack" class="instrument-card p-6 rounded-2xl w-64 text-center cursor-pointer" onclick="toggleInst('planet')">
-            <div class="text-4xl mb-4">🪐</div>
-            <h3 class="font-bold tracking-widest text-xs">PLANET BASS</h3>
-            <div class="grid grid-cols-4 gap-2 mt-6 justify-center mx-auto w-fit" id="planet-seq"></div>
-        </div>
-
-        <!-- INSTRUMENT 3: STAR (KEYS) -->
-        <div id="star-rack" class="instrument-card p-6 rounded-2xl w-64 text-center cursor-pointer" onclick="toggleInst('star')">
-            <div class="text-4xl mb-4">✨</div>
-            <h3 class="font-bold tracking-widest text-xs">STAR KEYS</h3>
-            <div class="grid grid-cols-4 gap-2 mt-6 justify-center mx-auto w-fit" id="star-seq"></div>
-        </div>
-
-        <!-- INSTRUMENT 4: VOID (VOCALS) -->
-        <div id="void-rack" class="instrument-card p-6 rounded-2xl w-64 text-center cursor-pointer" onclick="toggleInst('void')">
-            <div class="text-4xl mb-4">🎤</div>
-            <h3 class="font-bold tracking-widest text-xs">VOID VOCAL</h3>
-            <div class="mt-4 text-[10px] opacity-40">SPEAKS ON BAR 1</div>
-        </div>
-
-    </main>
-
-    <footer class="p-12 text-center text-[10px] tracking-[1em] opacity-20 z-50">
-        BUILT FOR THE ETERNITY
-    </footer>
+<body>
+    <div id="controls">CLICK MEMBERS TO TOGGLE LOOPS • KEYBOARD 1-4 FOR LIVE SOLO</div>
+    <canvas id="canvas"></canvas>
 
     <script>
-        let audioCtx, masterGain, nextTickTime = 0, currentStep = 0, bpm = 110;
-        let isRunning = false;
-        
-        const state = {
-            meteor: { active: false, seq: [1,0,0,0, 1,0,0,0, 1,0,0,0, 1,0,0,0] },
-            planet: { active: false, seq: [1,0,1,0, 0,0,1,0, 1,0,1,0, 0,1,0,0] },
-            star: { active: false, seq: [0,0,0,1, 0,0,0,1, 0,0,0,1, 0,0,1,1] },
-            void: { active: false }
-        };
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        let audioCtx, masterGain, compressor;
 
         // --- AUDIO ENGINE ---
         function initAudio() {
-            if(audioCtx) return;
+            if (audioCtx) return;
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = 0.6;
+            masterGain.gain.value = 0.5;
             
-            // Reverb / Space Effect
-            const reverb = audioCtx.createConvolver();
-            // (Wait... creating a fake reverb impulse for "Major Project" vibes)
-            const len = audioCtx.sampleRate * 2, impulse = audioCtx.createBuffer(2, len, audioCtx.sampleRate);
-            for(let i=0; i<len; i++) {
-                impulse.getChannelData(0)[i] = (Math.random()*2-1) * Math.pow(1-i/len, 2);
-                impulse.getChannelData(1)[i] = (Math.random()*2-1) * Math.pow(1-i/len, 2);
-            }
-            reverb.buffer = impulse;
-            
-            masterGain.connect(reverb);
-            reverb.connect(audioCtx.destination);
-            masterGain.connect(audioCtx.destination);
-            
-            scheduler();
+            compressor = audioCtx.createDynamicsCompressor();
+            masterGain.connect(compressor);
+            compressor.connect(audioCtx.destination);
+
+            setInterval(() => { if(audioCtx.state === 'running') step(); }, 200);
         }
 
-        function scheduler() {
-            while (nextTickTime < audioCtx.currentTime + 0.1) {
-                playStep(currentStep, nextTickTime);
-                nextStep();
+        // --- CHARACTER CLASSES ---
+        class Musician {
+            constructor(name, x, y, color, soundType) {
+                this.name = name; this.x = x; this.y = y; this.color = color;
+                this.soundType = soundType;
+                this.active = false; this.pulse = 0;
             }
-            setTimeout(scheduler, 25);
-        }
-
-        function nextStep() {
-            const secondsPerBeat = 60.0 / bpm / 4; // 16th notes
-            nextTickTime += secondsPerBeat;
-            currentStep = (currentStep + 1) % 16;
-        }
-
-        function playStep(step, time) {
-            // METEORS: Hard-hitting Kick
-            if(state.meteor.active && state.meteor.seq[step]) {
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.frequency.setValueAtTime(150, time);
-                osc.frequency.exponentialRampToValueAtTime(0.01, time + 0.1);
-                g.gain.setValueAtTime(0.8, time);
-                g.gain.linearRampToValueAtTime(0, time + 0.1);
-                osc.connect(g); g.connect(masterGain);
-                osc.start(time); osc.stop(time + 0.1);
-            }
-
-            // PLANETS: Dark FM Bass
-            if(state.planet.active && state.planet.seq[step]) {
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = 'sawtooth';
-                osc.frequency.setValueAtTime(55, time); // A1
-                g.gain.setValueAtTime(0.2, time);
-                g.gain.exponentialRampToValueAtTime(0.0001, time + 0.3);
-                osc.connect(g); g.connect(masterGain);
-                osc.start(time); osc.stop(time + 0.3);
-            }
-
-            // STARS: Shimmering Keys
-            if(state.star.active && state.star.seq[step]) {
-                const notes = [440, 523.25, 659.25, 783.99]; // A-minor chord
-                const osc = audioCtx.createOscillator();
-                const g = audioCtx.createGain();
-                osc.type = 'sine';
-                osc.frequency.setValueAtTime(notes[Math.floor(Math.random()*notes.length)], time);
-                g.gain.setValueAtTime(0.1, time);
-                g.gain.exponentialRampToValueAtTime(0.0001, time + 1.0);
-                osc.connect(g); g.connect(masterGain);
-                osc.start(time); osc.stop(time + 1.0);
-            }
-
-            // VOIDS: Vocals on 1st step
-            if(state.void.active && step === 0) {
-                const msg = new SpeechSynthesisUtterance(document.getElementById('vocal-text').value);
-                const voices = window.speechSynthesis.getVoices();
-                msg.voice = voices[document.getElementById('vocal-voice').value || 0];
-                msg.pitch = 0.2; msg.rate = 0.8;
-                window.speechSynthesis.speak(msg);
-            }
-
-            // Update UI
-            document.querySelectorAll('.node').forEach(n => n.classList.remove('active-step'));
-            // (Actually just visually sync the sequencer nodes here)
-            updateSequencerUI(step);
-        }
-
-        // --- UI & VISUALS ---
-        const vCanvas = document.getElementById('visualizer');
-        const vCtx = vCanvas.getContext('2d');
-        function initSequencers() {
-            ['meteor', 'planet', 'star'].forEach(inst => {
-                const container = document.getElementById(`${inst}-seq`);
-                for(let i=0; i<16; i++) {
-                    const d = document.createElement('div');
-                    d.className = `node ${state[inst].seq[i] ? 'on' : ''}`;
-                    d.id = `${inst}-node-${i}`;
-                    container.appendChild(d);
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y + Math.sin(Date.now()*0.002)*10);
+                
+                // Glow effect
+                ctx.shadowBlur = this.active ? 40 : 10;
+                ctx.shadowColor = this.color;
+                
+                // Character Body
+                ctx.fillStyle = this.color;
+                if(this.name === 'METEOR') { // Jagged Rock
+                    ctx.beginPath();
+                    for(let i=0; i<8; i++) {
+                        let r = 40 + Math.random()*10;
+                        let angle = (i/8)*Math.PI*2;
+                        ctx.lineTo(Math.cos(angle)*r, Math.sin(angle)*r);
+                    }
+                    ctx.fill();
+                } else if(this.name === 'PLANET') { // Ringed Planet
+                    ctx.beginPath(); ctx.arc(0,0, 50, 0, Math.PI*2); ctx.fill();
+                    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 5;
+                    ctx.beginPath(); ctx.ellipse(0,0, 100, 20, 0.5, 0, Math.PI*2); ctx.stroke();
+                } else if(this.name === 'STAR') { // Pulsing Star
+                    ctx.beginPath();
+                    for(let i=0; i<12; i++) {
+                        let r = i % 2 === 0 ? 60 : 20;
+                        let angle = (i/12)*Math.PI*2;
+                        ctx.lineTo(Math.cos(angle)*r, Math.sin(angle)*r);
+                    }
+                    ctx.fill();
+                } else { // NEBULA (Vocalist)
+                    ctx.globalAlpha = 0.6;
+                    ctx.beginPath(); ctx.arc(0,0, 60 + Math.sin(Date.now()*0.005)*10, 0, Math.PI*2); ctx.fill();
                 }
-            });
-        }
-
-        function toggleInst(inst) {
-            initAudio();
-            if(audioCtx.state === 'suspended') audioCtx.resume();
-            state[inst].active = !state[inst].active;
-            document.getElementById(`${inst}-rack`).classList.toggle('active');
-            document.getElementById('bpm-readout').innerText = "COSMIC SYNC: ON";
-        }
-
-        function updateSequencerUI(step) {
-            document.querySelectorAll('.node').forEach((n, i) => {
-                n.style.opacity = (i % 16 === step) ? "1" : "0.3";
-            });
-        }
-
-        function drawVisualizer() {
-            vCanvas.width = window.innerWidth;
-            vCanvas.height = window.innerHeight;
-            vCtx.fillStyle = 'rgba(0,0,0,0.1)';
-            vCtx.fillRect(0,0,vCanvas.width, vCanvas.height);
-            
-            if(state.planet.active) {
-                vCtx.strokeStyle = 'rgba(99, 102, 241, 0.2)';
-                vCtx.beginPath(); vCtx.arc(vCanvas.width/2, vCanvas.height/2, Math.random()*300, 0, Math.PI*2); vCtx.stroke();
+                
+                ctx.restore();
             }
-            requestAnimationFrame(drawVisualizer);
-        }
-
-        // Voice Loading
-        window.speechSynthesis.onvoiceschanged = () => {
-            const select = document.getElementById('vocal-voice');
-            window.speechSynthesis.getVoices().forEach((v, i) => {
-                const opt = document.createElement('option');
-                opt.value = i; opt.innerText = v.name;
-                select.appendChild(opt);
-            });
-        };
-
-        initSequencers();
-        drawVisualizer();
-    </script>
-</body>
-</html>
+            isClicked(mx, my) {
+                return Math.hypot(this.x
