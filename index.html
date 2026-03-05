@@ -2,73 +2,59 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>VOID BAND | Astra Engine</title>
+    <title>VOID BAND | The Awakening</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;700&display=swap" rel="stylesheet">
     <style>
-        body { background: #000; overflow: hidden; font-family: 'Space Grotesk', sans-serif; }
-        #canvas-bg { position: absolute; top: 0; left: 0; filter: blur(1px); }
-        .ui-content { position: relative; z-index: 100; transition: all 1.2s cubic-bezier(0.8, 0, 0.2, 1); }
-        .void-active { transform: scale(15); opacity: 0; filter: blur(50px); pointer-events: none; }
-        .glitch { animation: glitch 1s linear infinite; }
-        @keyframes glitch {
-            0% { text-shadow: 2px 0 red, -2px 0 blue; }
-            50% { text-shadow: -2px 0 red, 2px 0 blue; }
-            100% { text-shadow: 2px 0 red, -2px 0 blue; }
-        }
+        body { background: #000; overflow: hidden; font-family: 'Courier New', monospace; }
+        #canvas-bg { position: absolute; inset: 0; }
+        .ui { position: relative; z-index: 10; transition: 1.5s cubic-bezier(0.7, 0, 0.3, 1); }
+        .zoom-out { transform: scale(8); opacity: 0; filter: blur(20px); }
     </style>
 </head>
 <body class="flex items-center justify-center h-screen">
     <canvas id="canvas-bg"></canvas>
-
-    <div id="ui" class="ui-content text-center">
-        <h1 class="text-[12vw] font-black text-white leading-none tracking-tighter glitch">VOID</h1>
-        <p class="text-indigo-400 tracking-[1.5em] text-xs uppercase mb-12 opacity-50">Celestial Loop Station // Astra-01</p>
-        
-        <button onclick="launch()" class="group relative px-16 py-6 bg-transparent border border-white/20 text-white overflow-hidden transition-all hover:border-white">
-            <span class="relative z-10 tracking-[0.3em] font-bold">IGNITE THE VOID</span>
-            <div class="absolute inset-0 bg-white translate-y-full group-hover:translate-y-0 transition-transform duration-500"></div>
-            <span class="absolute inset-0 flex items-center justify-center text-black opacity-0 group-hover:opacity-100 transition-opacity duration-500 z-20 font-bold">START JAM</span>
+    <div id="ui" class="ui text-center">
+        <h1 class="text-white text-8xl font-black tracking-tighter mb-4 italic">VOID BAND</h1>
+        <p class="text-indigo-400 tracking-[1em] uppercase text-xs mb-12">Universal Tour // Star Date 00.1</p>
+        <button onclick="ignite()" class="border-2 border-white px-12 py-4 text-white hover:bg-white hover:text-black transition-all font-bold tracking-widest">
+            IGNITE THE STAGE
         </button>
     </div>
 
     <script>
         const canvas = document.getElementById('canvas-bg');
         const ctx = canvas.getContext('2d');
-        let stars = [], speed = 0.2, w, h;
+        let stars = [], speed = 0.5, w, h;
 
         function init() {
             w = canvas.width = window.innerWidth;
             h = canvas.height = window.innerHeight;
             stars = [];
-            for(let i=0; i<800; i++) stars.push({x:Math.random()*w-w/2, y:Math.random()*h-h/2, z:Math.random()*w});
+            for(let i=0; i<400; i++) stars.push({x: Math.random()*w, y: Math.random()*h, z: Math.random()*w});
         }
 
         function draw() {
-            ctx.fillStyle = "rgba(0,0,0,0.2)";
+            ctx.fillStyle = "black";
             ctx.fillRect(0,0,w,h);
-            ctx.translate(w/2, h/2);
             stars.forEach(s => {
                 s.z -= speed;
                 if(s.z <= 0) s.z = w;
-                let sx = (s.x / s.z) * w;
-                let sy = (s.y / s.z) * w;
-                let r = (1 - s.z/w) * 4;
-                ctx.fillStyle = `rgba(255,255,255,${1 - s.z/w})`;
+                let sx = (s.x - w/2) * (w/s.z) + w/2;
+                let sy = (s.y - h/2) * (w/s.z) + h/2;
+                let r = (w/s.z) * 1.5;
+                ctx.fillStyle = "white";
                 ctx.beginPath(); ctx.arc(sx, sy, r, 0, Math.PI*2); ctx.fill();
             });
-            ctx.setTransform(1,0,0,1,0,0);
             requestAnimationFrame(draw);
         }
 
-        function launch() {
-            speed = 60;
-            document.getElementById('ui').classList.add('void-active');
+        function ignite() {
+            speed = 50;
+            document.getElementById('ui').classList.add('zoom-out');
             setTimeout(() => { window.location.href = 'app.html'; }, 1300);
         }
 
-        window.onresize = init;
-        init(); draw();
+        window.onresize = init; init(); draw();
     </script>
 </body>
 </html>
