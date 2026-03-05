@@ -1,70 +1,75 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>VoidJam // Active</title>
+    <title>AuraSynth Engine</title>
     <style>
-        body, html { margin: 0; padding: 0; background: #000; overflow: hidden; }
+        body, html { margin: 0; padding: 0; background: #000; overflow: hidden; font-family: sans-serif; }
         canvas { display: block; }
-        #overlay {
-            position: absolute; top: 20px; left: 20px;
-            color: white; font-family: monospace; pointer-events: none;
-            text-transform: uppercase; letter-spacing: 4px; opacity: 0.5;
+        #instructions {
+            position: absolute; top: 20px; left: 20px; color: rgba(255,255,255,0.4);
+            letter-spacing: 2px; font-size: 10px; pointer-events: none;
         }
     </style>
 </head>
 <body>
-    <div id="overlay">System: Jamming // Scale: Phrygian Dominant</div>
+    <div id="instructions">MOVE MOUSE TO PLAY SYMPHONY • TYPE TO ADD RHYTHM • CLICK TO RESET</div>
     <canvas id="canvas"></canvas>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        let width, height, audioCtx, masterGain, reverb;
+        let width, height;
+        let audioCtx, masterGain, analyser;
         
-        // --- PRO SCALE: G-Minor Phrygian (Dark, Epic, Hard to sound bad) ---
-        const SCALE = [98.00, 103.83, 123.47, 130.81, 146.83, 155.56, 185.00, 196.00, 207.65, 246.94];
-        
-        let mouse = { x: 0, y: 0, active: false };
-        let trail = [];
-
+        // --- AUDIO ENGINE ---
         function initAudio() {
             if (audioCtx) return;
             audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             masterGain = audioCtx.createGain();
-            masterGain.gain.value = 0.3;
-            
-            // Compression to make it "Crunchy"
-            const compressor = audioCtx.createDynamicsCompressor();
-            compressor.threshold.setValueAtTime(-24, audioCtx.currentTime);
-            compressor.knee.setValueAtTime(40, audioCtx.currentTime);
-            
-            masterGain.connect(compressor);
-            compressor.connect(audioCtx.destination);
+            masterGain.gain.value = 0.15;
+            analyser = audioCtx.createAnalyser();
+            analyser.fftSize = 256;
+            masterGain.connect(analyser);
+            analyser.connect(audioCtx.destination);
         }
 
-        function playSynth(freq, x) {
+        function playNote(freq, type = 'sine', duration = 1.5) {
             if (!audioCtx) initAudio();
             const osc = audioCtx.createOscillator();
             const g = audioCtx.createGain();
-            
-            // Mix of Sawtooth and Sine for "Full" sound
-            osc.type = (x % 2 === 0) ? 'sawtooth' : 'triangle';
+            osc.type = type;
             osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
-            
-            g.gain.setValueAtTime(0.15, audioCtx.currentTime);
-            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + 1.2);
-            
-            // Bandpass filter to make it "Sweep"
-            const filter = audioCtx.createBiquadFilter();
-            filter.type = "bandpass";
-            filter.frequency.value = Math.random() * 2000 + 500;
-
-            osc.connect(filter);
-            filter.connect(g);
+            g.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + duration);
+            osc.connect(g);
             g.connect(masterGain);
-            
             osc.start();
-            osc.stop(audioCtx.currentTime + 1.5);
+            osc.stop(audioCtx.currentTime + duration);
+        }
+
+        // --- VISUALS ---
+        let particles = [];
+        class Particle {
+            constructor(x, y, color) {
+                this.x = x; this.y = y;
+                this.size = Math.random() * 5 + 1;
+                this.speedX = Math.random() * 3 - 1.5;
+                this.speedY = Math.random() * 3 - 1.5;
+                this.color = color;
+                this.life = 1;
+            }
+            update() {
+                this.x += this.speedX;
+                this.y += this.speedY;
+                this.life -= 0.01;
+            }
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.globalAlpha = this.life;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
         }
 
         function resize() {
@@ -73,53 +78,51 @@
         }
 
         function animate() {
-            // Dark trails
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.05)';
             ctx.fillRect(0, 0, width, height);
 
-            // Update & Draw Ribbon Trail
-            if (mouse.active) {
-                trail.push({x: mouse.x, y: mouse.y, age: 0});
-            }
-            if (trail.length > 50) trail.shift();
-
-            ctx.beginPath();
-            for(let i = 0; i < trail.length; i++) {
-                let p = trail[i];
-                p.age++;
-                let hue = (i * 5) + 200;
-                ctx.strokeStyle = `hsla(${hue}, 100%, 60%, ${i/trail.length})`;
-                ctx.lineWidth = i * 0.8;
-                ctx.lineTo(p.x, p.y);
-                ctx.stroke();
+            // Visual feedback from Audio
+            if (analyser) {
+                const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                analyser.getByteFrequencyData(dataArray);
+                const avg = dataArray.reduce((a, b) => a + b) / dataArray.length;
+                
+                ctx.strokeStyle = `hsla(${200 + avg}, 70%, 50%, 0.2)`;
+                ctx.lineWidth = avg / 5;
                 ctx.beginPath();
-                ctx.moveTo(p.x, p.y);
+                ctx.arc(width/2, height/2, avg * 2, 0, Math.PI * 2);
+                ctx.stroke();
             }
+
+            particles.forEach((p, i) => {
+                p.update();
+                p.draw();
+                if (p.life <= 0) particles.splice(i, 1);
+            });
 
             requestAnimationFrame(animate);
         }
 
+        // --- INTERACTION ---
         window.addEventListener('mousemove', (e) => {
-            mouse.x = e.clientX;
-            mouse.y = e.clientY;
-            mouse.active = true;
-
-            // Jam Logic: Play note when crossing hidden vertical sections
-            const section = Math.floor((e.clientX / width) * SCALE.length);
-            if (section !== mouse.lastSection) {
-                const f = SCALE[section % SCALE.length];
-                playSynth(f, section);
-                mouse.lastSection = section;
+            if (Math.random() > 0.95) { // Throttled synth
+                const freq = (e.clientX / width) * 440 + 220;
+                playNote(freq, 'triangle', 2);
+                particles.push(new Particle(e.clientX, e.clientY, '#4facfe'));
             }
         });
 
-        window.addEventListener('mousedown', () => {
-            if (audioCtx && audioCtx.state === 'suspended') audioCtx.resume();
+        window.addEventListener('keydown', (e) => {
+            const keys = {'a':261, 's':293, 'd':329, 'f':349, 'g':392, 'h':440, 'j':493, 'k':523};
+            if (keys[e.key]) {
+                playNote(keys[e.key] / 2, 'square', 0.5); // Percussive bass
+                for(let i=0; i<10; i++) particles.push(new Particle(width/2, height/2, '#f093fb'));
+            }
+        });
+
+        window.addEventListener('click', () => {
+            if (audioCtx) audioCtx.resume();
             else initAudio();
-            
-            // Click = Power Chord (Base note)
-            playSynth(SCALE[0] / 2, 0); 
-            playSynth(SCALE[2] / 2, 1);
         });
 
         window.addEventListener('resize', resize);
